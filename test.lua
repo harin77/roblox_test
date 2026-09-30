@@ -1,4 +1,4 @@
--- Blox Fruits Aimbot / Silent Aim / Skills - Universal PC + Mobile
+-- Blox Fruits Aimbot / Silent Aim / Skills - Universal
 -- [Ghaith] for WVERZNXRL
 
 local Players = game:GetService("Players")
@@ -9,12 +9,21 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
-local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
-local CommF_ = Remotes and Remotes:FindFirstChild("CommF_")
+-- ============================================================
+-- UI FIRST (so a visual error never kills the menu)
+-- ============================================================
+local Rayfield
+local ok, err = pcall(function()
+    Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+end)
+if not ok or not Rayfield then
+    warn("[Ghaith] Rayfield failed to load: " .. tostring(err))
+    return
+end
 
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
+-- ============================================================
 -- STATE
+-- ============================================================
 local State = {
     AimlockPlayers = false,
     AimlockNPC = false,
@@ -44,65 +53,70 @@ local State = {
     AntiCheatBypass = true,
 }
 
--- MOBILE-SAFE VISUALS (Part + Beam based)
-local VisualFolder = Instance.new("Folder")
-VisualFolder.Name = "GhaithVisuals"
-VisualFolder.Parent = Workspace
+-- ============================================================
+-- VISUAL OBJECTS - all pcall-wrapped so failures are silent
+-- ============================================================
+local VisualFolder
+pcall(function()
+    VisualFolder = Instance.new("Folder")
+    VisualFolder.Name = "GhaithVisuals"
+    VisualFolder.Parent = Workspace
+end)
 
-local tracerPart0 = Instance.new("Part")
-tracerPart0.Name = "TracerStart"
-tracerPart0.Anchored = true
-tracerPart0.CanCollide = false
-tracerPart0.Transparency = 1
-tracerPart0.Size = Vector3.new(0.1, 0.1, 0.1)
-tracerPart0.Parent = VisualFolder
+-- tracer: single stretched part (classic ESP line, works on all executors)
+local tracerPart
+pcall(function()
+    tracerPart = Instance.new("Part")
+    tracerPart.Name = "TracerLine"
+    tracerPart.Anchored = true
+    tracerPart.CanCollide = false
+    tracerPart.CanQuery = false
+    tracerPart.CanTouch = false
+    tracerPart.Material = Enum.Material.Neon
+    tracerPart.Color = Color3.fromRGB(0, 255, 0)
+    tracerPart.Size = Vector3.new(0.1, 0.1, 1)
+    tracerPart.Transparency = 1
+    tracerPart.Parent = VisualFolder
+end)
 
-local tracerAtt0 = Instance.new("Attachment")
-tracerAtt0.Parent = tracerPart0
+-- fov ring: thin frame of 4 parts (no cylinder, no mesh)
+local fovFrame = {}
+pcall(function()
+    for i = 1, 4 do
+        local p = Instance.new("Part")
+        p.Name = "FOVEdge" .. i
+        p.Anchored = true
+        p.CanCollide = false
+        p.CanQuery = false
+        p.CanTouch = false
+        p.Material = Enum.Material.Neon
+        p.Color = Color3.fromRGB(255, 255, 255)
+        p.Size = Vector3.new(0.1, 0.1, 1)
+        p.Transparency = 1
+        p.Parent = VisualFolder
+        fovFrame[i] = p
+    end
+end)
 
-local tracerPart1 = Instance.new("Part")
-tracerPart1.Name = "TracerEnd"
-tracerPart1.Anchored = true
-tracerPart1.CanCollide = false
-tracerPart1.Transparency = 1
-tracerPart1.Size = Vector3.new(0.1, 0.1, 0.1)
-tracerPart1.Parent = VisualFolder
+-- hitbox visual box
+local hitboxPart
+pcall(function()
+    hitboxPart = Instance.new("Part")
+    hitboxPart.Name = "HitboxVisual"
+    hitboxPart.Anchored = true
+    hitboxPart.CanCollide = false
+    hitboxPart.CanQuery = false
+    hitboxPart.CanTouch = false
+    hitboxPart.Material = Enum.Material.Neon
+    hitboxPart.Color = Color3.fromRGB(0, 255, 255)
+    hitboxPart.Size = Vector3.new(4, 4, 4)
+    hitboxPart.Transparency = 1
+    hitboxPart.Parent = VisualFolder
+end)
 
-local tracerAtt1 = Instance.new("Attachment")
-tracerAtt1.Parent = tracerPart1
-
-local tracerBeam = Instance.new("Beam")
-tracerBeam.Attachment0 = tracerAtt0
-tracerBeam.Attachment1 = tracerAtt1
-tracerBeam.Color = ColorSequence.new(Color3.fromRGB(0, 255, 0))
-tracerBeam.Thickness = 0.15
-tracerBeam.FaceCamera = true
-tracerBeam.Enabled = false
-tracerBeam.Parent = tracerPart0
-
-local fovPart = Instance.new("Part")
-fovPart.Name = "FOVRing"
-fovPart.Anchored = true
-fovPart.CanCollide = false
-fovPart.Shape = Enum.PartType.Cylinder
-fovPart.Material = Enum.Material.Neon
-fovPart.Color = Color3.fromRGB(255, 255, 255)
-fovPart.Transparency = 0.7
-fovPart.Size = Vector3.new(0.05, 5, 5)
-fovPart.Parent = VisualFolder
-fovPart.Transparency = 1
-
-local hitboxPart = Instance.new("Part")
-hitboxPart.Name = "HitboxVisual"
-hitboxPart.Anchored = true
-hitboxPart.CanCollide = false
-hitboxPart.Material = Enum.Material.Neon
-hitboxPart.Color = Color3.fromRGB(0, 255, 255)
-hitboxPart.Transparency = 0.5
-hitboxPart.Parent = VisualFolder
-hitboxPart.Transparency = 1
-
--- HITBOX PARTS
+-- ============================================================
+-- HITBOX
+-- ============================================================
 local HITBOX_PARTS = {
     "HumanoidRootPart", "Head",
     "UpperTorso", "LowerTorso", "Torso",
@@ -115,7 +129,9 @@ local HITBOX_PARTS = {
 }
 local modifiedHitboxes = {}
 
+-- ============================================================
 -- HELPERS
+-- ============================================================
 local function isAlive(plr)
     return plr.Character
         and plr.Character:FindFirstChild("Humanoid")
@@ -245,7 +261,9 @@ local function getClosestTarget(range, checkFOV, fovSize, lowHP, specific, incP,
     return closest
 end
 
--- HITBOX
+-- ============================================================
+-- HITBOX LOGIC
+-- ============================================================
 local function applyHitbox(char, size)
     if not char then return end
     local data = modifiedHitboxes[char]
@@ -311,7 +329,9 @@ local function getHitboxTargets()
     return t
 end
 
+-- ============================================================
 -- SKILLS
+-- ============================================================
 local SKILL_KEYS = {"Z", "X", "C", "V", "F"}
 local skillIndex = 1
 local lastSkillFire = 0
@@ -326,13 +346,11 @@ local function getEquippedTool()
 end
 
 local function fireSkill(key)
-    -- method 1: Tool:Activate (mobile-safe)
     local tool = getEquippedTool()
     if tool then
         local ok = pcall(function() tool:Activate() end)
         if ok then return true end
     end
-    -- method 2: VirtualInputManager key event
     local vim = game:GetService("VirtualInputManager")
     local ok2 = pcall(function()
         vim:SendKeyEvent(true, key, false, game)
@@ -340,7 +358,6 @@ local function fireSkill(key)
         vim:SendKeyEvent(false, key, false, game)
     end)
     if ok2 then return true end
-    -- method 3: raw keypress
     if keypress and keyrelease then
         local ok3 = pcall(function()
             keypress(string.byte(key))
@@ -352,7 +369,12 @@ local function fireSkill(key)
     return false
 end
 
--- NAMECALL HOOK (silent aim + anti-cheat)
+-- ============================================================
+-- NAMECALL HOOK
+-- ============================================================
+local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+local CommF_ = Remotes and Remotes:FindFirstChild("CommF_")
+
 local hookInstalled = false
 if getrawmetatable and setreadonly and newcclosure and CommF_ then
     local ok = pcall(function()
@@ -406,11 +428,9 @@ if getrawmetatable and setreadonly and newcclosure and CommF_ then
     hookInstalled = ok
 end
 
-if not hookInstalled then
-    warn("[Ghaith] namecall hook unavailable - silent aim disabled. aimlock still works.")
-end
-
--- UI
+-- ============================================================
+-- RAYFIELD UI BUILD
+-- ============================================================
 local Window = Rayfield:CreateWindow({
     Name = "Blox Fruits Aimbot | [Ghaith]",
     LoadingTitle = "Loading...",
@@ -422,7 +442,7 @@ local Window = Rayfield:CreateWindow({
 local AimbotTab = Window:CreateTab("Aimbot", 4483362458)
 local SilentTab = Window:CreateTab("Silent Aim", 4483362458)
 local VisualsTab = Window:CreateTab("Visuals", 4483362458)
-local SkillTab = Window:CreateTab("Skill Routing", 4483362458)
+local SkillTab = Window:CreateTab("Skills", 4483362458)
 local SettingsTab = Window:CreateTab("Settings", 4483362458)
 
 local function getPlayerList()
@@ -457,11 +477,11 @@ AimbotTab:CreateToggle({Name = "Aimlock Prediction", CurrentValue = false, Flag 
 AimbotTab:CreateSlider({Name = "Prediction Amount", Range = {0, 1}, Increment = 0.01, CurrentValue = 0.12, Flag = "PredictionAmount", Callback = function(v) State.PredictionAmount = v end})
 AimbotTab:CreateToggle({Name = "Target Lowest HP", CurrentValue = false, Flag = "TargetLowestHP", Callback = function(v) State.TargetLowestHP = v end})
 
-AimbotTab:CreateSection("Manual Target Player")
-AimbotTab:CreateToggle({Name = "Manual Target (lock to one)", CurrentValue = false, Flag = "ManualTargetEnabled", Callback = function(v) State.ManualTargetEnabled = v end})
+AimbotTab:CreateSection("Manual Target")
+AimbotTab:CreateToggle({Name = "Lock to one player", CurrentValue = false, Flag = "ManualTargetEnabled", Callback = function(v) State.ManualTargetEnabled = v end})
 local manualDrop = AimbotTab:CreateDropdown({Name = "Select Player", Options = getPlayerList(), CurrentOption = "None", Flag = "ManualTargetPlayer", Callback = function(v) State.ManualTargetPlayer = v[1] end})
 AimbotTab:CreateButton({Name = "Refresh Player List", Callback = function() manualDrop:SetOptions(getPlayerList()) end})
-AimbotTab:CreateDropdown({Name = "Aimlock Target", Options = updateTargetList(), CurrentOption = "None", Flag = "AimlockTarget", Callback = function(v) State.AimlockTarget = v[1] end})
+AimbotTab:CreateDropdown({Name = "Aimlock Target Filter", Options = updateTargetList(), CurrentOption = "None", Flag = "AimlockTarget", Callback = function(v) State.AimlockTarget = v[1] end})
 
 SilentTab:CreateToggle({Name = "Silent Aim Players", CurrentValue = false, Flag = "SilentAimPlayers", Callback = function(v) State.SilentAimPlayers = v end})
 SilentTab:CreateToggle({Name = "Silent Aim NPC", CurrentValue = false, Flag = "SilentAimNPC", Callback = function(v) State.SilentAimNPC = v end})
@@ -469,11 +489,11 @@ SilentTab:CreateSlider({Name = "SA Range", Range = {0, 2000}, Increment = 10, Su
 SilentTab:CreateToggle({Name = "SA Prediction", CurrentValue = false, Flag = "SAPrediction", Callback = function(v) State.SAPrediction = v end})
 SilentTab:CreateSlider({Name = "SA Prediction Amount", Range = {0, 1}, Increment = 0.01, CurrentValue = 0.2, Flag = "SAPredictionAmount", Callback = function(v) State.SAPredictionAmount = v end})
 SilentTab:CreateDropdown({Name = "Silent Lock Target", Options = updateTargetList(), CurrentOption = "None", Flag = "SilentLockTarget", Callback = function(v) State.SilentLockTarget = v[1] end})
-SilentTab:CreateParagraph({Title = "Hook Status", Content = hookInstalled and "Silent aim active." or "Executor blocks namecall hook. Silent aim unavailable - use aimlock."})
+SilentTab:CreateParagraph({Title = "Hook Status", Content = hookInstalled and "Silent aim active." or "Executor blocks namecall hook - use aimlock."})
 
 VisualsTab:CreateToggle({Name = "Highlight Target", CurrentValue = false, Flag = "HighlightTarget", Callback = function(v) State.HighlightTarget = v end})
-VisualsTab:CreateToggle({Name = "Show Tracer (beam)", CurrentValue = false, Flag = "ShowTracer", Callback = function(v) State.ShowTracer = v end})
-VisualsTab:CreateToggle({Name = "Show FOV Ring (part)", CurrentValue = false, Flag = "ShowFOVRing", Callback = function(v) State.ShowFOVRing = v end})
+VisualsTab:CreateToggle({Name = "Show Tracer (line)", CurrentValue = false, Flag = "ShowTracer", Callback = function(v) State.ShowTracer = v end})
+VisualsTab:CreateToggle({Name = "Show FOV Ring", CurrentValue = false, Flag = "ShowFOVRing", Callback = function(v) State.ShowFOVRing = v end})
 VisualsTab:CreateSlider({Name = "FOV Size", Range = {50, 1000}, Increment = 10, Suffix = " px", CurrentValue = 200, Flag = "FOVSize", Callback = function(v) State.FOVSize = v end})
 
 VisualsTab:CreateSection("Hitbox")
@@ -487,7 +507,7 @@ VisualsTab:CreateToggle({Name = "Show Hitbox Visual", CurrentValue = false, Flag
 SkillTab:CreateToggle({Name = "Skill Routing (auto-cast)", CurrentValue = false, Flag = "SkillRouting", Callback = function(v) State.SkillRouting = v end})
 SkillTab:CreateSlider({Name = "Skill Range", Range = {5, 100}, Increment = 1, Suffix = " studs", CurrentValue = 30, Flag = "SkillRange", Callback = function(v) State.SkillRange = v end})
 SkillTab:CreateSlider({Name = "Skill Delay", Range = {0.05, 1}, Increment = 0.05, Suffix = " s", CurrentValue = 0.2, Flag = "SkillDelay", Callback = function(v) State.SkillDelay = v end})
-SkillTab:CreateParagraph({Title = "Method", Content = "Tries Tool Activate first, then VIM, then keypress. First success wins."})
+SkillTab:CreateParagraph({Title = "Method", Content = "Tries Tool Activate, then VIM, then keypress."})
 
 SettingsTab:CreateToggle({Name = "Anti-Cheat Bypass", CurrentValue = true, Flag = "AntiCheatBypass", Callback = function(v) State.AntiCheatBypass = v end})
 SettingsTab:CreateParagraph({Title = "Hook", Content = hookInstalled and "installed" or "blocked by executor"})
@@ -498,7 +518,58 @@ task.spawn(function()
     end
 end)
 
+-- ============================================================
+-- TRACER UPDATE (stretched part between camera and target)
+-- ============================================================
+local function updateTracer(fromPos, toPos)
+    if not tracerPart then return end
+    local mid = (fromPos + toPos) / 2
+    local len = (toPos - fromPos).Magnitude
+    if len < 0.5 then len = 0.5 end
+    tracerPart.CFrame = CFrame.lookAt(mid, toPos)
+    tracerPart.Size = Vector3.new(0.15, 0.15, len)
+    tracerPart.Transparency = 0
+end
+
+-- ============================================================
+-- FOV RING UPDATE (square frame of 4 parts)
+-- ============================================================
+local function updateFOVRing()
+    if #fovFrame < 4 then return end
+    local size = State.FOVSize / 200  -- world studs, half-width
+    local cam = Camera.CFrame
+    local center = cam * CFrame.new(0, 0, -3)
+
+    -- top edge
+    fovFrame[1].CFrame = center * CFrame.new(0, size, 0)
+    fovFrame[1].Size = Vector3.new(0.1, 0.05, size * 2)
+    fovFrame[1].Transparency = 0.3
+
+    -- bottom edge
+    fovFrame[2].CFrame = center * CFrame.new(0, -size, 0)
+    fovFrame[2].Size = Vector3.new(0.1, 0.05, size * 2)
+    fovFrame[2].Transparency = 0.3
+
+    -- left edge
+    fovFrame[3].CFrame = center * CFrame.new(-size, 0, 0) * CFrame.Angles(math.rad(90), 0, 0)
+    fovFrame[3].Size = Vector3.new(0.1, 0.05, size * 2)
+    fovFrame[3].Transparency = 0.3
+
+    -- right edge
+    fovFrame[4].CFrame = center * CFrame.new(size, 0, 0) * CFrame.Angles(math.rad(90), 0, 0)
+    fovFrame[4].Size = Vector3.new(0.1, 0.05, size * 2)
+    fovFrame[4].Transparency = 0.3
+end
+
+local function hideFOVRing()
+    for _, p in ipairs(fovFrame) do
+        p.Transparency = 1
+    end
+end
+
+-- ============================================================
 -- MAIN LOOP
+-- ============================================================
 RunService.RenderStepped:Connect(function()
     local activeTarget = getClosestTarget(
         State.AimlockRange, State.ShowFOVRing, State.FOVSize,
@@ -506,6 +577,7 @@ RunService.RenderStepped:Connect(function()
         State.AimlockPlayers, State.AimlockNPC
     )
 
+    -- AIMLOCK
     if (State.AimlockPlayers or State.AimlockNPC or State.ManualTargetEnabled) and activeTarget then
         local root = activeTarget:FindFirstChild("HumanoidRootPart")
             or activeTarget:FindFirstChild("Torso")
@@ -519,6 +591,7 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
+    -- SKILLS
     if State.SkillRouting then
         local myChar = LocalPlayer.Character
         local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -536,6 +609,7 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
+    -- HITBOX
     if State.HitboxEnabled then
         local targets = getHitboxTargets()
         local set = {}
@@ -548,17 +622,21 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    if State.ShowHitbox and activeTarget then
-        local root = activeTarget:FindFirstChild("HumanoidRootPart")
-        if root then
-            hitboxPart.CFrame = root.CFrame
-            hitboxPart.Size = root.Size
-            hitboxPart.Transparency = 0.5
+    -- HITBOX VISUAL
+    if hitboxPart then
+        if State.ShowHitbox and activeTarget then
+            local root = activeTarget:FindFirstChild("HumanoidRootPart")
+            if root then
+                hitboxPart.CFrame = root.CFrame
+                hitboxPart.Size = root.Size
+                hitboxPart.Transparency = 0.5
+            end
+        else
+            hitboxPart.Transparency = 1
         end
-    else
-        hitboxPart.Transparency = 1
     end
 
+    -- HIGHLIGHT
     if State.HighlightTarget and activeTarget then
         if not Highlight or Highlight.Parent ~= activeTarget then
             if Highlight then Highlight:Destroy() end
@@ -572,27 +650,28 @@ RunService.RenderStepped:Connect(function()
         Highlight = nil
     end
 
-    if State.ShowTracer and activeTarget then
-        local root = activeTarget:FindFirstChild("HumanoidRootPart")
-            or activeTarget:FindFirstChild("Torso")
-            or activeTarget:FindFirstChild("UpperTorso")
-        if root then
-            local camPos = Camera.CFrame.Position + Camera.CFrame.LookVector * 2
-            tracerPart0.CFrame = CFrame.new(camPos)
-            tracerPart1.CFrame = CFrame.new(root.Position)
-            tracerBeam.Enabled = true
+    -- TRACER
+    if tracerPart then
+        if State.ShowTracer and activeTarget then
+            local root = activeTarget:FindFirstChild("HumanoidRootPart")
+                or activeTarget:FindFirstChild("Torso")
+                or activeTarget:FindFirstChild("UpperTorso")
+            if root then
+                local camPos = Camera.CFrame.Position + Camera.CFrame.LookVector * 1.5
+                updateTracer(camPos, root.Position)
+            else
+                tracerPart.Transparency = 1
+            end
+        else
+            tracerPart.Transparency = 1
         end
-    else
-        tracerBeam.Enabled = false
     end
 
+    -- FOV RING
     if State.ShowFOVRing then
-        local worldSize = State.FOVSize / 100
-        fovPart.CFrame = Camera.CFrame * CFrame.new(0, 0, -3) * CFrame.Angles(0, 0, math.rad(90))
-        fovPart.Size = Vector3.new(0.05, worldSize, worldSize)
-        fovPart.Transparency = 0.7
+        updateFOVRing()
     else
-        fovPart.Transparency = 1
+        hideFOVRing()
     end
 end)
 
