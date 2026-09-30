@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Rayfield UI Initialization
 -- ============================================================================
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu'))()
 
 -- Global Configuration State
 local Config = {
@@ -143,16 +143,16 @@ local Window = Rayfield:CreateWindow({
     }
 })
 
-local MainTab = Window:CreateTab("Aimbot / Silent Aim", nil)
-local SettingsTab = Window:CreateTab("Settings & Logic", nil)
+local AimbotTab = Window:CreateTab("Aimbot", nil)
+local SettingsTab = Window:CreateTab("Settings", nil)
 local VisualsTab = Window:CreateTab("Visuals", nil)
 
 -- ============================================================================
 -- TAB 1: AIMBOT / SILENT AIM UI
 -- ============================================================================
-MainTab:CreateSection("=== AIMBOT / SILENT AIM ===")
+AimbotTab:CreateSection("=== AIMBOT / SILENT AIM ===")
 
-MainTab:CreateToggle({
+AimbotTab:CreateToggle({
     Name = "Aimlock Players",
     CurrentValue = false,
     Flag = "AimlockPlayers",
@@ -161,7 +161,7 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateToggle({
+AimbotTab:CreateToggle({
     Name = "Aimlock NPC",
     CurrentValue = false,
     Flag = "AimlockNPC",
@@ -170,7 +170,7 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateToggle({
+AimbotTab:CreateToggle({
     Name = "Silent Aim Players",
     CurrentValue = false,
     Flag = "SilentAimPlayers",
@@ -179,7 +179,7 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateToggle({
+AimbotTab:CreateToggle({
     Name = "Silent Aim NPC",
     CurrentValue = false,
     Flag = "SilentAimNPC",
@@ -188,7 +188,7 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateSlider({
+AimbotTab:CreateSlider({
     Name = "Aimlock Range",
     Min = 10,
     Max = 3000,
@@ -199,12 +199,21 @@ MainTab:CreateSlider({
     end,
 })
 
-MainTab:CreateToggle({
+AimbotTab:CreateToggle({
     Name = "Aimlock Prediction",
     CurrentValue = false,
     Flag = "AimlockPrediction",
     Callback = function(v)
         Config.AimlockPrediction = v
+    end,
+})
+
+AimbotTab:CreateSection("=== SKILL ROUTING ===")
+
+AimbotTab:CreateButton({
+    Name = "Skill Routing",
+    Callback = function()
+        print("Skill Routing Initialized")
     end,
 })
 
@@ -282,6 +291,11 @@ SilentLockTargetText = SettingsTab:CreateParagraph({
 -- TAB 3: VISUALS UI
 -- ============================================================================
 VisualsTab:CreateSection("=== VISUALS ===")
+
+VisualsTab:CreateParagraph({
+    Title = "FOV Ring gates Aimlock",
+    Content = "When FOV Ring is ON, Aimlock only locks targets inside the circle.\nSilent Aim is always global."
+})
 
 VisualsTab:CreateToggle({
     Name = "Highlight Target",
