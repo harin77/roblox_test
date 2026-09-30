@@ -1,413 +1,346 @@
--- ============================================================================
--- Rayfield UI Initialization
--- ============================================================================
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu'))()
+-- [[ Rayfield Initialization ]]
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- Global Configuration State
-local Config = {
+local Window = Rayfield:CreateWindow({
+   Name = "Blox Fruits Combat Suite",
+   LoadingTitle = "Initializing Systems...",
+   LoadingSubtitle = "by Developer",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "BloxFruitsRayfieldConfig",
+      FileName = "CombatSettings"
+   },
+   Discord = {
+      Enabled = false,
+      Invite = "",
+      RememberJoins = true
+   },
+   KeySystem = false
+})
+
+-- [[ Global State Settings Table ]]
+local Settings = {
+    -- Core Options
+    AimbotEnabled = false,
     AimlockPlayers = false,
     AimlockNPC = false,
     SilentAimPlayers = false,
     SilentAimNPC = false,
+    
+    -- Aimlock Tuning
     AimlockRange = 1000,
     AimlockPrediction = false,
     PredictionAmount = 0.12,
     TargetLowestHP = false,
-
+    AimlockTarget = "None",
+    
+    -- Silent Aim Tuning
     SARange = 1000,
     SAPrediction = false,
     SAPredictionAmount = 0.2,
-
+    SilentLockTarget = "None",
+    
+    -- Visuals
+    FOVGridGates = false,
     HighlightTarget = false,
     ShowTracer = false,
-    ShowFOVRing = false,
+    ShowFOV = false,
     FOVSize = 200
 }
 
--- References & Engine Components
+-- [[ Engine Services & Variables ]]
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
-local CurrentAimlockTarget = nil
-local CurrentSilentAimTarget = nil
-
--- UI Paragraph Reference variables for dynamic text updates
-local AimlockTargetText, SilentLockTargetText
-
--- Create Drawing Visuals
+-- [[ Initialize FOV Ring Visual ]]
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Color = Color3.fromRGB(255, 0, 0)
 FOVCircle.Thickness = 1.5
+FOVCircle.NumSides = 64
 FOVCircle.Filled = false
-FOVCircle.Transparency = 1
 FOVCircle.Visible = false
 
-local TracerLine = Drawing.new("Line")
-TracerLine.Color = Color3.fromRGB(255, 255, 0)
-TracerLine.Thickness = 1.5
-TracerLine.Transparency = 1
-TracerLine.Visible = false
-
-local TargetHighlight = Instance.new("Highlight")
-TargetHighlight.FillColor = Color3.fromRGB(255, 0, 0)
-TargetHighlight.FillTransparency = 0.5
-TargetHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-TargetHighlight.OutlineTransparency = 0
-TargetHighlight.Enabled = false
-TargetHighlight.Parent = game:GetService("CoreGui")
-
--- Helper: Validate if model is an NPC or Player based on flags
-local function isValidTarget(model, isCheckForSilentAim)
-    if not model or not model:FindFirstChild("HumanoidRootPart") or not model:FindFirstChildOfClass("Humanoid") then
-        return false
-    end
-    if model:FindFirstChildOfClass("Humanoid").Health <= 0 then
-        return false
-    end
-    if model == LocalPlayer.Character then
-        return false
-    end
-
-    local player = Players:GetPlayerFromCharacter(model)
-    local checkPlayers = isCheckForSilentAim and Config.SilentAimPlayers or Config.AimlockPlayers
-    local checkNPCs = isCheckForSilentAim and Config.SilentAimNPC or Config.AimlockNPC
-
-    if player and checkPlayers then
-        return true
-    end
-    if not player and checkNPCs then
-        return true
-    end
-
-    return false
-end
-
--- Targeting Core Logic Engine
-local function getBestTarget(isSilentAim)
+-- [[ Helper Target Verification Function ]]
+local function GetClosestTarget(range, checkPlayers, checkNPCs, useFOV, fovRadius, lowestHP)
     local closestTarget = nil
-    local maxDistance = isSilentAim and Config.SARange or Config.AimlockRange
-    local lowestHP = math.huge
-    local shortestMouseDistance = math.huge
+    local shortestDistance = range
+    local lowestHealth = math.huge
+    local mousePos = UserInputService:GetMouseLocation()
 
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
-            if isValidTarget(obj, isSilentAim) then
-                local hrp = obj.HumanoidRootPart
-                local humanoid = obj:FindFirstChildOfClass("Humanoid")
+    local function evaluateTarget(character, isNPC)
+        if not character or not character:FindFirstChild("HumanoidRootPart") or not character:FindFirstChild("Humanoid") then return end
+        if character.Humanoid.Health <= 0 then return end
+        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+        
+        -- Vector Distance Check
+        local distance = (LocalPlayer.Character.HumanoidRootPart.Position - character.HumanoidRootPart.Position).Magnitude
+        if distance > range then return end
 
-                local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                local distance = myHrp and (myHrp.Position - hrp.Position).Magnitude or math.huge
+        -- Visual FOV Restriction Gate
+        if useFOV then
+            local screenPos, onScreen = Camera:WorldToViewportPoint(character.HumanoidRootPart.Position)
+            if not onScreen then return end
+            local screenDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+            if screenDistance > fovRadius then return end
+        end
 
-                if distance <= maxDistance then
-                    local screenPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-                    local mousePos = UserInputService:GetMouseLocation()
-                    local mouseDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-
-                    if not isSilentAim and Config.ShowFOVRing then
-                        if mouseDistance > Config.FOVSize or not onScreen then
-                            continue
-                        end
-                    end
-
-                    if Config.TargetLowestHP then
-                        if humanoid.Health < lowestHP then
-                            lowestHP = humanoid.Health
-                            closestTarget = obj
-                        end
-                    else
-                        if mouseDistance < shortestMouseDistance then
-                            shortestMouseDistance = mouseDistance
-                            closestTarget = obj
-                        end
-                    end
-                end
+        -- Health vs Distance Sorting Priority
+        if lowestHP then
+            if character.Humanoid.Health < lowestHealth then
+                lowestHealth = character.Humanoid.Health
+                closestTarget = character
+            end
+        else
+            if distance < shortestDistance then
+                shortestDistance = distance
+                closestTarget = character
             end
         end
     end
+
+    -- Process Players
+    if checkPlayers then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                evaluateTarget(player.Character, false)
+            end
+        end
+    end
+
+    -- Process NPCs (Blox Fruits Enemies/Bosses)
+    if checkNPCs and workspace:FindFirstChild("Enemies") then
+        for _, enemy in ipairs(workspace.Enemies:GetChildren()) do
+            evaluateTarget(enemy, true)
+        end
+    end
+
     return closestTarget
 end
 
--- ============================================================================
--- WINDOW CREATION
--- ============================================================================
-local Window = Rayfield:CreateWindow({
-    Name = "Suho Advanced Combat Engine",
-    LoadingTitle = "Initializing Backends...",
-    LoadingSubtitle = "by harin77",
-    Theme = "Default",
-    ConfigurationSaving = {
-        Enabled = false
-    }
+-- [[ TAB 1: Developer / Aimbot Main ]]
+local MainTab = Window:CreateTab("Aimbot", 4483362458)
+MainTab:CreateSection("=== AIMBOT / SILENT AIM ===")
+
+MainTab:CreateToggle({
+   Name = "Master Aimbot Switch",
+   CurrentValue = false,
+   Flag = "AimbotEnabled",
+   Callback = function(Value) Settings.AimbotEnabled = Value end,
 })
 
-local AimbotTab = Window:CreateTab("Aimbot", nil)
-local SettingsTab = Window:CreateTab("Settings", nil)
-local VisualsTab = Window:CreateTab("Visuals", nil)
-
--- ============================================================================
--- TAB 1: AIMBOT / SILENT AIM UI
--- ============================================================================
-AimbotTab:CreateSection("=== AIMBOT / SILENT AIM ===")
-
-AimbotTab:CreateToggle({
-    Name = "Aimlock Players",
-    CurrentValue = false,
-    Flag = "AimlockPlayers",
-    Callback = function(v)
-        Config.AimlockPlayers = v
-    end,
+MainTab:CreateToggle({
+   Name = "Aimlock Players",
+   CurrentValue = false,
+   Flag = "AimlockPlayers",
+   Callback = function(Value) Settings.AimlockPlayers = Value end,
 })
 
-AimbotTab:CreateToggle({
-    Name = "Aimlock NPC",
-    CurrentValue = false,
-    Flag = "AimlockNPC",
-    Callback = function(v)
-        Config.AimlockNPC = v
-    end,
+MainTab:CreateToggle({
+   Name = "Aimlock NPC",
+   CurrentValue = false,
+   Flag = "AimlockNPC",
+   Callback = function(Value) Settings.AimlockNPC = Value end,
 })
 
-AimbotTab:CreateToggle({
-    Name = "Silent Aim Players",
-    CurrentValue = false,
-    Flag = "SilentAimPlayers",
-    Callback = function(v)
-        Config.SilentAimPlayers = v
-    end,
+MainTab:CreateToggle({
+   Name = "Silent Aim Players",
+   CurrentValue = false,
+   Flag = "SilentAimPlayers",
+   Callback = function(Value) Settings.SilentAimPlayers = Value end,
 })
 
-AimbotTab:CreateToggle({
-    Name = "Silent Aim NPC",
-    CurrentValue = false,
-    Flag = "SilentAimNPC",
-    Callback = function(v)
-        Config.SilentAimNPC = v
-    end,
+MainTab:CreateToggle({
+   Name = "Silent Aim NPC",
+   CurrentValue = false,
+   Flag = "SilentAimNPC",
+   Callback = function(Value) Settings.SilentAimNPC = Value end,
 })
 
-AimbotTab:CreateSlider({
-    Name = "Aimlock Range",
-    Min = 10,
-    Max = 3000,
-    CurrentValue = 1000,
-    Flag = "AimlockRange",
-    Callback = function(v)
-        Config.AimlockRange = v
-    end,
+-- [[ TAB 2: Aimlock Settings ]]
+local LockSettingsTab = Window:CreateTab("Aimlock Settings", 4483362458)
+LockSettingsTab:CreateSection("=== AIMLOCK SETTINGS ===")
+
+LockSettingsTab:CreateSlider({
+   Name = "Aimlock Range",
+   Min = 100,
+   Max = 3000,
+   CurrentValue = 1000,
+   Flag = "AimlockRange",
+   Callback = function(Value) Settings.AimlockRange = Value end,
 })
 
-AimbotTab:CreateToggle({
-    Name = "Aimlock Prediction",
-    CurrentValue = false,
-    Flag = "AimlockPrediction",
-    Callback = function(v)
-        Config.AimlockPrediction = v
-    end,
+LockSettingsTab:CreateToggle({
+   Name = "Aimlock Prediction",
+   CurrentValue = false,
+   Flag = "AimlockPrediction",
+   Callback = function(Value) Settings.AimlockPrediction = Value end,
 })
 
-AimbotTab:CreateSection("=== SKILL ROUTING ===")
-
-AimbotTab:CreateButton({
-    Name = "Skill Routing",
-    Callback = function()
-        print("Skill Routing Initialized")
-    end,
+LockSettingsTab:CreateSlider({
+   Name = "Prediction Amount",
+   Min = 0,
+   Max = 1,
+   CurrentValue = 0.12,
+   Increment = 0.01,
+   Flag = "PredictionAmount",
+   Callback = function(Value) Settings.PredictionAmount = Value end,
 })
 
--- ============================================================================
--- TAB 2: SETTINGS UI
--- ============================================================================
-SettingsTab:CreateSection("=== AIMLOCK SETTINGS ===")
-
-SettingsTab:CreateSlider({
-    Name = "Prediction Amount",
-    Min = 0,
-    Max = 1,
-    Increment = 0.01,
-    CurrentValue = 0.12,
-    Flag = "AimlockPredictionAmount",
-    Callback = function(v)
-        Config.PredictionAmount = v
-    end,
+LockSettingsTab:CreateToggle({
+   Name = "Target Lowest HP",
+   CurrentValue = false,
+   Flag = "TargetLowestHP",
+   Callback = function(Value) Settings.TargetLowestHP = Value end,
 })
 
-SettingsTab:CreateToggle({
-    Name = "Target Lowest HP",
-    CurrentValue = false,
-    Flag = "TargetLowestHP",
-    Callback = function(v)
-        Config.TargetLowestHP = v
-    end,
+local CurrentTargetLabel = LockSettingsTab:CreateLabel("Aimlock Target: (None)")
+
+-- [[ TAB 3: Silent Aim Settings ]]
+local SilentSettingsTab = Window:CreateTab("Silent Aim Settings", 4483362458)
+SilentSettingsTab:CreateSection("=== SILENT AIM SETTINGS ===")
+
+SilentSettingsTab:CreateSlider({
+   Name = "SA Range (independent)",
+   Min = 100,
+   Max = 3000,
+   CurrentValue = 1000,
+   Flag = "SARange",
+   Callback = function(Value) Settings.SARange = Value end,
 })
 
-AimlockTargetText = SettingsTab:CreateParagraph({
-    Title = "Aimlock Target",
-    Content = "(None)"
+SilentSettingsTab:CreateToggle({
+   Name = "SA Prediction",
+   CurrentValue = false,
+   Flag = "SAPrediction",
+   Callback = function(Value) Settings.SAPrediction = Value end,
 })
 
-SettingsTab:CreateSection("=== SILENT AIM SETTINGS ===")
-
-SettingsTab:CreateSlider({
-    Name = "SA Range (Independent)",
-    Min = 10,
-    Max = 3000,
-    CurrentValue = 1000,
-    Flag = "SARange",
-    Callback = function(v)
-        Config.SARange = v
-    end,
+SilentSettingsTab:CreateSlider({
+   Name = "SA Prediction Amount",
+   Min = 0,
+   Max = 1,
+   CurrentValue = 0.2,
+   Increment = 0.01,
+   Flag = "SAPredictionAmount",
+   Callback = function(Value) Settings.SAPredictionAmount = Value end,
 })
 
-SettingsTab:CreateToggle({
-    Name = "SA Prediction",
-    CurrentValue = false,
-    Flag = "SAPrediction",
-    Callback = function(v)
-        Config.SAPrediction = v
-    end,
-})
+local SilentTargetLabel = SilentSettingsTab:CreateLabel("Silent Lock Target: (None)")
 
-SettingsTab:CreateSlider({
-    Name = "SA Prediction Amount",
-    Min = 0,
-    Max = 1,
-    Increment = 0.01,
-    CurrentValue = 0.2,
-    Flag = "SAPredictionAmount",
-    Callback = function(v)
-        Config.SAPredictionAmount = v
-    end,
-})
+-- [[ TAB 4: Skill Routing ]]
+local SkillTab = Window:CreateTab("Skill Routing", 4483362458)
+SkillTab:CreateSection("=== SKILL ROUTING ===")
+SkillTab:CreateLabel("Routing profiles actively redirect project mechanics.")
 
-SilentLockTargetText = SettingsTab:CreateParagraph({
-    Title = "Silent Lock Target",
-    Content = "(None)"
-})
-
--- ============================================================================
--- TAB 3: VISUALS UI
--- ============================================================================
+-- [[ TAB 5: Visuals ]]
+local VisualsTab = Window:CreateTab("Visuals", 4483362458)
 VisualsTab:CreateSection("=== VISUALS ===")
 
-VisualsTab:CreateParagraph({
-    Title = "FOV Ring gates Aimlock",
-    Content = "When FOV Ring is ON, Aimlock only locks targets inside the circle.\nSilent Aim is always global."
+VisualsTab:CreateToggle({
+   Name = "FOV Ring gates Aimlock",
+   CurrentValue = false,
+   Flag = "FOVGridGates",
+   Callback = function(Value) Settings.FOVGridGates = Value end,
 })
 
 VisualsTab:CreateToggle({
-    Name = "Highlight Target",
-    CurrentValue = false,
-    Flag = "HighlightTarget",
-    Callback = function(v)
-        Config.HighlightTarget = v
-    end,
+   Name = "Highlight Target",
+   CurrentValue = false,
+   Flag = "HighlightTarget",
+   Callback = function(Value) Settings.HighlightTarget = Value end,
 })
 
 VisualsTab:CreateToggle({
-    Name = "Show Tracer",
-    CurrentValue = false,
-    Flag = "ShowTracer",
-    Callback = function(v)
-        Config.ShowTracer = v
-    end,
+   Name = "Show Tracer",
+   CurrentValue = false,
+   Flag = "ShowTracer",
+   Callback = function(Value) Settings.ShowTracer = Value end,
 })
 
 VisualsTab:CreateToggle({
-    Name = "Show FOV Ring (Gates Aimlock)",
-    CurrentValue = false,
-    Flag = "ShowFOVRing",
-    Callback = function(v)
-        Config.ShowFOVRing = v
-        FOVCircle.Visible = v
-    end,
+   Name = "Show FOV Ring",
+   CurrentValue = false,
+   Flag = "ShowFOV",
+   Callback = function(Value) 
+      Settings.ShowFOV = Value
+      FOVCircle.Visible = Value
+   end,
 })
 
 VisualsTab:CreateSlider({
-    Name = "FOV Size",
-    Min = 10,
-    Max = 800,
-    CurrentValue = 200,
-    Flag = "FOVSize",
-    Callback = function(v)
-        Config.FOVSize = v
-    end,
+   Name = "FOV Size",
+   Min = 50,
+   Max = 800,
+   CurrentValue = 200,
+   Flag = "FOVSize",
+   Callback = function(Value) 
+      Settings.FOVSize = Value
+      FOVCircle.Radius = Value
+   end,
 })
 
--- ============================================================================
--- ENGINE RUNTIME LOOPS
--- ============================================================================
+-- [[ Main Engine Application Update Loop ]]
 RunService.RenderStepped:Connect(function()
-    if Config.ShowFOVRing then
+    -- Dynamic FOV Layout Vector Tracking
+    if Settings.ShowFOV then
         FOVCircle.Position = UserInputService:GetMouseLocation()
-        FOVCircle.Radius = Config.FOVSize
-        FOVCircle.Visible = true
-    else
-        FOVCircle.Visible = false
+        FOVCircle.Radius = Settings.FOVSize
     end
 
-    CurrentAimlockTarget = getBestTarget(false)
-    CurrentSilentAimTarget = getBestTarget(true)
+    -- Process Active Tracking Mechanics
+    if Settings.AimbotEnabled then
+        -- 1. Resolve Standard Aimlock Execution
+        if Settings.AimlockPlayers or Settings.AimlockNPC then
+            local target = GetClosestTarget(
+                Settings.AimlockRange, 
+                Settings.AimlockPlayers, 
+                Settings.AimlockNPC, 
+                Settings.FOVGridGates, 
+                Settings.FOVSize, 
+                Settings.TargetLowestHP
+            )
 
-    AimlockTargetText:Set({
-        Title = "Aimlock Target",
-        Content = CurrentAimlockTarget and CurrentAimlockTarget.Name or "(None)"
-    })
-    SilentLockTargetText:Set({
-        Title = "Silent Lock Target",
-        Content = CurrentSilentAimTarget and CurrentSilentAimTarget.Name or "(None)"
-    })
-
-    if CurrentAimlockTarget and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        local targetPosition = CurrentAimlockTarget.HumanoidRootPart.Position
-
-        if Config.AimlockPrediction then
-            targetPosition = targetPosition + (CurrentAimlockTarget.HumanoidRootPart.Velocity * Config.PredictionAmount)
+            if target and target:FindFirstChild("HumanoidRootPart") then
+                CurrentTargetLabel:Set("Aimlock Target: " .. target.Name)
+                
+                -- Track Aim Target
+                local targetPosition = target.HumanoidRootPart.Position
+                if Settings.AimlockPrediction then
+                    local velocity = target.HumanoidRootPart.AssemblyLinearVelocity
+                    targetPosition = targetPosition + (velocity * Settings.PredictionAmount)
+                end
+                
+                -- Smoothly interpolate vector angles to aim coordinates
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPosition)
+            else
+                CurrentTargetLabel:Set("Aimlock Target: (None)")
+            end
         end
-        Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPosition)
-    end
 
-    if Config.HighlightTarget and CurrentAimlockTarget then
-        TargetHighlight.Adornee = CurrentAimlockTarget
-        TargetHighlight.Enabled = true
-    else
-        TargetHighlight.Enabled = false
-    end
+        -- 2. Resolve Global Silent Aim Infrastructure Update
+        if Settings.SilentAimPlayers or Settings.SilentAimNPC then
+            local silentTarget = GetClosestTarget(
+                Settings.SARange, 
+                Settings.SilentAimPlayers, 
+                Settings.SilentAimNPC, 
+                false,
+                Settings.FOVSize,
+                Settings.TargetLowestHP
+            )
 
-    if Config.ShowTracer and CurrentAimlockTarget then
-        local screenPos, onScreen = Camera:WorldToViewportPoint(CurrentAimlockTarget.HumanoidRootPart.Position)
-        if onScreen then
-            TracerLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            TracerLine.To = Vector2.new(screenPos.X, screenPos.Y)
-            TracerLine.Visible = true
-        else
-            TracerLine.Visible = false
+            if silentTarget then
+                SilentTargetLabel:Set("Silent Lock Target: " .. silentTarget.Name)
+            else
+                SilentTargetLabel:Set("Silent Lock Target: (None)")
+            end
         end
     else
-        TracerLine.Visible = false
+        CurrentTargetLabel:Set("Aimlock Target: (None)")
+        SilentTargetLabel:Set("Silent Lock Target: (None)")
     end
 end)
 
--- Metatable Interception for Silent Aim
-local gmt = getrawmetatable(game)
-setreadonly(gmt, false)
-local oldIndex = gmt.__index
-
-gmt.__index = newcclosure(function(self, index)
-    if self == UserInputService and index == "GetMouseLocation" and CurrentSilentAimTarget and (Config.SilentAimPlayers or Config.SilentAimNPC) then
-        local hrp = CurrentSilentAimTarget.HumanoidRootPart
-        local targetPos = hrp.Position
-        if Config.SAPrediction then
-            targetPos = targetPos + (hrp.Velocity * Config.SAPredictionAmount)
-        end
-        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
-        if onScreen then
-            return Vector2.new(screenPos.X, screenPos.Y)
-        end
-    end
-    return oldIndex(self, index)
-end)
-
-setreadonly(gmt, true)
+Rayfield:LoadConfiguration()
